@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sınıflandırma ve Kümeleme Algoritmaları</title>
+    <style>
+        :root { --ana-renk: #2563eb; --arkaplan: #f1f5f9; --panel: #ffffff; --sinir: #e2e8f0; --basari: #16a34a; --yazi: #334155; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--arkaplan); color: var(--yazi); margin: 0; padding: 20px; height: 100vh; display: flex; gap: 20px; overflow: hidden; box-sizing: border-box; }
+        
+        .yan-panel { width: 320px; background: var(--panel); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; flex-shrink: 0; border: 1px solid var(--sinir); box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .ana-bolge { flex-grow: 1; display: flex; flex-direction: column; gap: 15px; position: relative; min-width: 0; }
+        
+        .bolum-baslik { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: #94a3b8; border-bottom: 2px solid #f1f5f9; padding-bottom: 5px; margin-bottom: 5px; display: block; }
+        .kontrol-grubu { display: flex; flex-direction: column; gap: 8px; }
+        .satir { display: flex; gap: 8px; }
+        
+        select, input[type="range"], button { padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; background: white; transition: 0.2s; }
+        select:focus, input:focus { border-color: var(--ana-renk); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+        button { background: var(--ana-renk); color: white; border: none; cursor: pointer; font-weight: 600; flex: 1; }
+        button:hover { filter: brightness(1.1); transform: translateY(-1px); }
+        button:disabled { background: #e2e8f0; cursor: not-allowed; color: #94a3b8; transform: none; }
+        button.ikincil { background: #64748b; }
+        button.tehlike { background: #ef4444; }
+        button.basari { background: var(--basari); }
+
+        .sinif-listesi { display: flex; flex-direction: column; gap: 8px; }
+        .sinif-oge { display: flex; align-items: center; gap: 10px; background: #f8fafc; padding: 8px 12px; border-radius: 8px; cursor: pointer; border: 2px solid transparent; transition: 0.2s; }
+        .sinif-oge.aktif { border-color: var(--ana-renk); background: #eff6ff; }
+        .sinif-nokta { width: 14px; height: 14px; border-radius: 50%; }
+        .sinif-adi { flex-grow: 1; font-weight: 600; font-size: 0.9rem; }
+
+        .tuval-kapsayici { flex-grow: 1; background: white; border-radius: 16px; overflow: hidden; position: relative; border: 1px solid var(--sinir); box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+
+        .agac-sema { margin-top: 10px; padding: 15px; background: #f8fafc; border-radius: 12px; font-size: 11px; overflow-x: auto; white-space: nowrap; border: 1px solid var(--sinir); }
+        .agac-dugum { display: inline-flex; flex-direction: column; align-items: center; margin: 0 6px; }
+        .dugum-icerik { padding: 6px 10px; background: white; border: 1px solid #cbd5e1; border-radius: 6px; margin-bottom: 8px; font-family: monospace; font-weight: 600; color: #475569; }
+        .dugum-yaprak { color: white; border: none; }
+        .agac-cocuklar { display: flex; gap: 12px; border-top: 2px solid #cbd5e1; padding-top: 8px; }
+
+        .bilgi-paneli { height: 160px; background: #0f172a; color: #e2e8f0; font-family: 'Consolas', monospace; font-size: 12px; padding: 16px; border-radius: 12px; overflow-y: auto; border: 1px solid #1e293b; }
+        .log-satir { margin-bottom: 6px; border-bottom: 1px solid #1e293b; padding-bottom: 4px; }
+        .vurgu { color: #4ade80; font-weight: bold; }
+        .lejant { position: absolute; top:10px; left:10px; background:rgba(255,255,255,0.9); padding:6px 10px; border-radius:6px; font-size:11px; pointer-events:none; border:1px solid #cbd5e1; }
+        .lejant-oge { display: flex; align-items: center; gap: 5px; margin-bottom: 2px; }
+        .daire-dolu { width: 8px; height: 8px; border-radius: 50%; background: #333; }
+        .daire-bos { width: 6px; height: 6px; border-radius: 50%; border: 2px solid #333; }
+    </style>
+</head>
+<body>
+
+    <div class="yan-panel">
+        <div>
+            <span class="bolum-baslik">Model Seçimi</span>
+            <select id="algoritmaSecimi" onchange="arayuzGuncelle()">
+                <option value="knn">k-En Yakın Komşu (k-NN)</option>
+                <option value="agac">Karar Ağacı (Decision Tree)</option>
+                <option value="kmeans">k-Means Kümeleme</option>
+            </select>
+        </div>
+
+        <div>
+            <span class="bolum-baslik">Parametreler</span>
+            <div class="kontrol-grubu" id="parametreGrubu">
+                <label id="parametreEtiketi" style="font-size:12px; font-weight:600;">Komşu Sayısı (k): 5</label>
+                <input type="range" id="parametreGirdisi" min="1" max="20" value="5" oninput="arayuzGuncelle()">
+            </div>
+            
+            <div class="kontrol-grubu" id="agacAyarlari" style="display:none">
+                <label style="font-size:12px; font-weight:600;">Bölme Kriteri</label>
+                <select id="bolmeKriteri" onchange="analiziCalistir()">
+                    <option value="gini">Gini Algoritması</option>
+                    <option value="twoing">Twoing Algoritması</option>
+                </select>
+            </div>
+
+            <div class="kontrol-grubu" id="ayrimGrubu" style="margin-top:10px;">
+                <label id="ayrimEtiketi" style="font-size:12px; font-weight:600;">Eğitim/Test Oranı: %80</label>
+                <input type="range" id="ayrimGirdisi" min="10" max="90" value="80" step="10" oninput="ayrimEtiketiniGuncelle()">
+            </div>
+        </div>
+
+        <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                <span class="bolum-baslik" style="border:none; margin:0;">Veri Seti</span>
+                <button id="btnSinifEkle" style="flex:0; padding:4px 10px; font-size:10px;" onclick="sinifEkle()">+ Sınıf</button>
+            </div>
+            <div id="sinifListesi" class="sinif-listesi"></div>
+        </div>
+
+        <div class="kontrol-grubu" style="margin-top:auto">
+            <div class="satir">
+                <button class="ikincil" onclick="veriUret()">Veri Dağıt</button>
+                <button class="tehlike" onclick="veriyiTemizle()">Temizle</button>
+            </div>
+            <div id="islemButonlari" class="satir">
+                <button class="basari" onclick="analiziCalistir()">Modeli Eğit & Test Et</button>
+            </div>
+        </div>
+        
+        <div id="agacKapsayici" style="display:none;">
+            <span class="bolum-baslik">Ağaç Yapısı</span>
+            <div id="agacSema" class="agac-sema"></div>
+        </div>
+    </div>
+
+    <div class="ana-bolge">
+        <div class="tuval-kapsayici" id="tuvalKapsayici">
+            <canvas id="anaTuval"></canvas>
+            <div class="lejant">
+                <div class="lejant-oge"><div class="daire-dolu"></div> Eğitim Verisi</div>
+                <div class="lejant-oge"><div class="daire-bos"></div> Test Verisi</div>
+            </div>
+        </div>
+        <div class="bilgi-paneli" id="logPaneli">
+            <div class="log-satir">> Sistem hazır. Veri oluşturup analizi başlatın.</div>
+        </div>
+    </div>
+
+<script>
+    const tuval = document.getElementById('anaTuval');
+    const cizimAraci = tuval.getContext('2d', { alpha: false });
+    const RENK_HAVUZU = ["#ef4444", "#22c55e", "#3b82f6", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
+    const IZGARA_COZUNURLUGU = 8;
+
+    let genislik, yukseklik;
+    let siniflar = [];
+    let noktalar = [];
+    let aktifSinifId = null;
+    
+    let kmeansDurumu = { baslatildi: false, merkezler: [], gecmis: [] };
+    let agacModeli = null;
+
+    window.onload = () => {
+        tuvaliBoyutlandir();
+        sinifEkle(); sinifEkle();
+        veriyiDagitmaliUret();
+        arayuzGuncelle();
+    };
+
+    window.onresize = tuvaliBoyutlandir;
+    function tuvaliBoyutlandir() {
+        const kapsayici = document.getElementById('tuvalKapsayici');
+        tuval.width = kapsayici.clientWidth;
+        tuval.height = kapsayici.clientHeight;
+        genislik = tuval.width;
+        yukseklik = tuval.height;
+        herSeyiciz();
+    }
+
+    function arayuzGuncelle() {
+        const algoritma = document.getElementById('algoritmaSecimi').value;
+        const etiket = document.getElementById('parametreEtiketi');
+        const deger = document.getElementById('parametreGirdisi').value;
+
+        document.getElementById('parametreGrubu').style.display = (algoritma === 'agac') ? 'none' : 'flex';
+        document.getElementById('agacAyarlari').style.display = (algoritma === 'agac') ? 'flex' : 'none';
+        document.getElementById('ayrimGrubu').style.display = (algoritma === 'kmeans') ? 'none' : 'flex'; 
+
+        if(algoritma === 'kmeans') etiket.innerText = `Küme Sayısı (k): ${deger}`;
+        else etiket.innerText = `Komşu Sayısı (k): ${deger}`;
+
+        butonlariGuncelle();
+    }
+
+    function ayrimEtiketiniGuncelle() {
+        const deger = document.getElementById('ayrimGirdisi').value;
+        document.getElementById('ayrimEtiketi').innerText = `Eğitim/Test Oranı: %${deger}`;
+    }
+
+    function butonlariGuncelle() {
+        const algoritma = document.getElementById('algoritmaSecimi').value;
+        const btnAlani = document.getElementById('islemButonlari');
+        
+        kmeansDurumu = { baslatildi: false, merkezler: [] };
+        agacModeli = null;
+        document.getElementById('agacKapsayici').style.display = 'none';
+
+        if(algoritma === 'kmeans') {
+            btnAlani.innerHTML = `
+                <button class="ikincil" onclick="kmeansBaslat()">Başlat</button>
+                <button class="basari" onclick="kmeansAdim()">+1 Adım İlerle</button>
+            `;
+        } else {
+            btnAlani.innerHTML = `<button class="basari" onclick="analiziCalistir()">Eğit & Test Et</button>`;
+        }
+        
+        cizimAraci.fillStyle = '#f1f5f9';
+        cizimAraci.fillRect(0, 0, genislik, yukseklik);
+        noktalariCiz();
+    }
+
+    function sinifEkle() {
+        if (siniflar.length >= RENK_HAVUZU.length) return alert("Maksimum sınıf limitine ulaşıldı.");
+        
+        const renk = RENK_HAVUZU.find(c => !siniflar.map(x => x.renk).includes(c));
+        let harf = 'A';
+        for(let i=0; i<26; i++) {
+            const h = String.fromCharCode(65 + i);
+            if(!siniflar.map(x => x.harf).includes(h)) { harf = h; break; }
+        }
+
+        const yeniSinif = { id: Date.now() + Math.random(), harf, renk };
+        siniflar.push(yeniSinif);
+        siniflar.sort((a,b) => a.harf.localeCompare(b.harf));
+        
+        if (!aktifSinifId) aktifSinifId = yeniSinif.id;
+        sinifListesiniYazdir();
+    }
+
+    function sinifSil(id, e) {
+        e.stopPropagation();
+        if (siniflar.length <= 1) return alert("En az 1 sınıf kalmalıdır.");
+        
+        siniflar = siniflar.filter(c => c.id !== id);
+        noktalar = noktalar.filter(p => p.sinifId !== id);
+        if (aktifSinifId === id) aktifSinifId = siniflar[0].id;
+        
+        sinifListesiniYazdir();
+        herSeyiciz();
+    }
+
+    function sinifListesiniYazdir() {
+        const liste = document.getElementById('sinifListesi');
+        liste.innerHTML = '';
+        siniflar.forEach(sinif => {
+            const aktifMi = sinif.id === aktifSinifId ? 'aktif' : '';
+            liste.innerHTML += `
+                <div class="sinif-oge ${aktifMi}" onclick="aktifSinifId=${sinif.id}; sinifListesiniYazdir()">
+                    <div class="sinif-nokta" style="background:${sinif.renk}"></div>
+                    <span class="sinif-adi">Sınıf ${sinif.harf}</span>
+                    <button class="tehlike" style="flex:0; padding:4px 8px; font-size:10px;" onclick="sinifSil(${sinif.id}, event)">Sil</button>
+                </div>`;
+        });
+        document.getElementById('btnSinifEkle').disabled = siniflar.length >= RENK_HAVUZU.length;
+    }
+
+    function veriUret() { veriyiDagitmaliUret(); } // Alias
+
+    function veriyiDagitmaliUret() {
+        noktalar = [];
+        butonlariGuncelle();
+        const ayrimOrani = parseInt(document.getElementById('ayrimGirdisi').value) / 100;
+
+        siniflar.forEach(sinif => {
+            const cx = Math.random() * (genislik * 0.8) + genislik * 0.1;
+            const cy = Math.random() * (yukseklik * 0.8) + yukseklik * 0.1;
+            
+            for(let i=0; i<30; i++) {
+                const egitimMi = Math.random() < ayrimOrani;
+                noktalar.push({
+                    x: cx + (Math.random()-0.5) * 150,
+                    y: cy + (Math.random()-0.5) * 150,
+                    sinifId: sinif.id,
+                    renk: sinif.renk,
+                    tip: egitimMi ? 'egitim' : 'test'
+                });
+            }
+        });
+        herSeyiciz();
+        logYaz(`Veri seti oluşturuldu: %${ayrimOrani*100} Eğitim, %${(1-ayrimOrani)*100} Test.`);
+    }
+
+    function veriyiTemizle() {
+        noktalar = [];
+        butonlariGuncelle();
+        herSeyiciz();
+        logYaz("Tüm veriler temizlendi.");
+    }
+
+    function herSeyiciz(aktifAlgoritma = null) {
+        cizimAraci.fillStyle = '#ffffff';
+        cizimAraci.fillRect(0, 0, genislik, yukseklik);
+        
+        if (aktifAlgoritma) arkaplanBoyama(aktifAlgoritma);
+        noktalariCiz();
+        if (kmeansDurumu.baslatildi) merkezleriCiz();
+    }
+
+    function noktalariCiz() {
+        noktalar.forEach(p => {
+            cizimAraci.beginPath();
+            cizimAraci.arc(p.x, p.y, 6, 0, Math.PI*2);
+            if (p.tip === 'egitim') {
+                cizimAraci.fillStyle = p.renk;
+                cizimAraci.fill();
+                cizimAraci.strokeStyle = '#fff';
+            } else {
+                cizimAraci.fillStyle = '#fff';
+                cizimAraci.fill();
+                cizimAraci.strokeStyle = p.renk;
+                cizimAraci.lineWidth = 2.5;
+            }
+            cizimAraci.stroke();
+            cizimAraci.lineWidth = 1; // Reset
+        });
+    }
+
+    function merkezleriCiz() {
+        kmeansDurumu.merkezler.forEach((m, i) => {
+            cizimAraci.beginPath();
+            cizimAraci.arc(m.x, m.y, 12, 0, Math.PI*2);
+            cizimAraci.fillStyle = '#fbbf24'; cizimAraci.fill();
+            cizimAraci.strokeStyle = '#000'; cizimAraci.lineWidth = 2; cizimAraci.stroke();
+            cizimAraci.fillStyle = '#000'; cizimAraci.font = 'bold 11px sans-serif';
+            cizimAraci.textAlign = 'center'; cizimAraci.textBaseline = 'middle';
+            cizimAraci.fillText("M"+(i+1), m.x, m.y);
+        });
+    }
+
+    function arkaplanBoyama(algo) {
+        const k = parseInt(document.getElementById('parametreGirdisi').value);
+        const egitimVerisi = noktalar.filter(p => p.tip === 'egitim');
+
+        for (let y = 0; y < yukseklik; y += IZGARA_COZUNURLUGU) {
+            for (let x = 0; x < genislik; x += IZGARA_COZUNURLUGU) {
+                let renk = null;
+                
+                if (algo === 'knn') {
+                    const id = knnTahmin(x, y, k, egitimVerisi);
+                    const sinif = siniflar.find(c => c.id === id);
+                    if(sinif) renk = sinif.renk;
+                } 
+                else if (algo === 'agac' && agacModeli) {
+                    const harf = agacTahmin(agacModeli, x, y);
+                    const sinif = siniflar.find(c => c.harf === harf);
+                    if(sinif) renk = sinif.renk;
+                }
+                else if (algo === 'kmeans' && kmeansDurumu.merkezler.length > 0) {
+                    const idx = kmeansTahmin(x, y);
+                    renk = RENK_HAVUZU[idx % RENK_HAVUZU.length]; 
+                }
+
+                if (renk) {
+                    cizimAraci.fillStyle = renk;
+                    cizimAraci.globalAlpha = 0.15;
+                    cizimAraci.fillRect(x, y, IZGARA_COZUNURLUGU, IZGARA_COZUNURLUGU);
+                    cizimAraci.globalAlpha = 1.0;
+                }
+            }
+        }
+    }
+
+
+    function knnTahmin(x, y, k, veriSeti) {
+        if(veriSeti.length === 0) return null;
+        const mesafeler = veriSeti.map(p => ({ id: p.sinifId, d: (p.x-x)**2 + (p.y-y)**2 }));
+        mesafeler.sort((a,b) => a.d - b.d);
+        
+        const oylar = {};
+        let maxOy = 0, kazanan = null;
+        for(let i=0; i < Math.min(k, mesafeler.length); i++){
+            const id = mesafeler[i].id;
+            oylar[id] = (oylar[id] || 0) + 1;
+            if(oylar[id] > maxOy) { maxOy = oylar[id]; kazanan = id; }
+        }
+        return kazanan;
+    }
+
+    function kmeansBaslat() {
+        if(noktalar.length === 0) return alert("Önce veri ekleyin.");
+        const k = parseInt(document.getElementById('parametreGirdisi').value);
+        kmeansDurumu.merkezler = Array(k).fill(0).map(() => ({ x: Math.random() * genislik, y: Math.random() * yukseklik }));
+        kmeansDurumu.baslatildi = true;
+        herSeyiciz('kmeans');
+        logYaz(`K-Means başlatıldı (k=${k}).`);
+    }
+
+    function kmeansAdim() {
+        if(!kmeansDurumu.baslatildi) return kmeansBaslat();
+        const k = kmeansDurumu.merkezler.length;
+        const toplamlar = Array(k).fill(0).map(() => ({x:0, y:0, sayi:0}));
+        let degisim = 0;
+
+        noktalar.forEach(p => {
+            const idx = kmeansTahmin(p.x, p.y);
+            toplamlar[idx].x += p.x; toplamlar[idx].y += p.y; toplamlar[idx].sayi++;
+        });
+
+        kmeansDurumu.merkezler.forEach((m, i) => {
+            if(toplamlar[i].sayi > 0) {
+                const yeniX = toplamlar[i].x / toplamlar[i].sayi;
+                const yeniY = toplamlar[i].y / toplamlar[i].sayi;
+                degisim += Math.abs(yeniX - m.x) + Math.abs(yeniY - m.y);
+                m.x = yeniX; m.y = yeniY;
+            } else {
+                m.x = Math.random() * genislik; m.y = Math.random() * yukseklik;
+            }
+        });
+        
+        herSeyiciz('kmeans');
+        logYaz(`Merkezler güncellendi. Toplam değişim: ${degisim.toFixed(1)}`);
+    }
+
+    function kmeansTahmin(x, y) {
+        let minMesafe = Infinity, idx = 0;
+        kmeansDurumu.merkezler.forEach((m, i) => {
+            const d = (m.x-x)**2 + (m.y-y)**2;
+            if(d < minMesafe) { minMesafe = d; idx = i; }
+        });
+        return idx;
+    }
+
+    function agacEgit() {
+        const egitimVerisi = noktalar.filter(p => p.tip === 'egitim');
+        if(egitimVerisi.length === 0) return alert("Eğitim verisi yok!");
+        
+        const kriter = document.getElementById('bolmeKriteri').value;
+        const veri = egitimVerisi.map(p => {
+            const s = siniflar.find(c => c.id === p.sinifId);
+            return { x: p.x, y: p.y, harf: s ? s.harf : '?' };
+        });
+
+        agacModeli = agacInsaEt(veri, 0, 5, kriter);
+        
+        document.getElementById('agacKapsayici').style.display = 'block';
+        const sema = document.getElementById('agacSema');
+        sema.innerHTML = '';
+        agacHtmlUret(agacModeli, sema);
+        
+        herSeyiciz('agac');
+        dogrulukHesapla('agac');
+    }
+
+    function agacInsaEt(veri, derinlik, maxDerinlik, kriter) {
+        const harfler = veri.map(p => p.harf);
+        const benzersiz = [...new Set(harfler)];
+        const mod = diziModu(harfler);
+
+        if (benzersiz.length <= 1 || derinlik >= maxDerinlik || veri.length < 5) {
+            return { yaprak: true, harf: mod, sayi: veri.length };
+        }
+
+        const bolme = enIyiBolmeBul(veri, kriter);
+        if(!bolme) return { yaprak: true, harf: mod, sayi: veri.length };
+
+        return {
+            yaprak: false, ozellik: bolme.ozellik, esik: bolme.esik,
+            sol: agacInsaEt(bolme.sol, derinlik+1, maxDerinlik, kriter),
+            sag: agacInsaEt(bolme.sag, derinlik+1, maxDerinlik, kriter)
+        };
+    }
+
+    function enIyiBolmeBul(veri, kriter) {
+        let enIyiSkor = -Infinity, enIyiBolme = null;
+        for(let i=0; i<20; i++) {
+            const ozellik = Math.random() > 0.5 ? 'x' : 'y';
+            const rastgeleNokta = veri[Math.floor(Math.random() * veri.length)];
+            const esik = rastgeleNokta[ozellik];
+            
+            const sol = veri.filter(d => d[ozellik] < esik);
+            const sag = veri.filter(d => d[ozellik] >= esik);
+            
+            if(sol.length === 0 || sag.length === 0) continue;
+            
+            const skor = kazancHesapla(veri, sol, sag);
+            if(skor > enIyiSkor) { enIyiSkor = skor; enIyiBolme = { ozellik, esik, sol, sag }; }
+        }
+        return enIyiBolme;
+    }
+
+    function kazancHesapla(ebeveyn, sol, sag) {
+        const gini = (arr) => {
+            const sayim = {}; arr.forEach(x => sayim[x.harf] = (sayim[x.harf]||0)+1);
+            let toplam = 0; for(let k in sayim) toplam += (sayim[k]/arr.length)**2;
+            return 1 - toplam;
+        };
+        const pImp = gini(ebeveyn);
+        return pImp - ((sol.length/ebeveyn.length)*gini(sol) + (sag.length/ebeveyn.length)*gini(sag));
+    }
+
+    function agacTahmin(dugum, x, y) {
+        if(dugum.yaprak) return dugum.harf;
+        const deger = dugum.ozellik === 'x' ? x : y;
+        return deger < dugum.esik ? agacTahmin(dugum.sol, x, y) : agacTahmin(dugum.sag, x, y);
+    }
+
+    function agacHtmlUret(dugum, kapsayici) {
+        const el = document.createElement('div'); el.className = 'agac-dugum';
+        if(dugum.yaprak) {
+            const sinif = siniflar.find(c => c.harf === dugum.harf);
+            const renk = sinif ? sinif.renk : '#ccc';
+            el.innerHTML = `<div class="dugum-icerik dugum-yaprak" style="background:${renk}">Sınıf ${dugum.harf}<br>(${dugum.sayi})</div>`;
+        } else {
+            el.innerHTML = `<div class="dugum-icerik">${dugum.ozellik.toUpperCase()} < ${Math.round(dugum.esik)}</div>`;
+            const cocuklar = document.createElement('div'); cocuklar.className = 'agac-cocuklar';
+            agacHtmlUret(dugum.sol, cocuklar); agacHtmlUret(dugum.sag, cocuklar);
+            el.appendChild(cocuklar);
+        }
+        kapsayici.appendChild(el);
+    }
+
+    function dogrulukHesapla(algo) {
+        const egitimVerisi = noktalar.filter(p => p.tip === 'egitim');
+        const testVerisi = noktalar.filter(p => p.tip === 'test');
+        
+        if (testVerisi.length === 0) return logYaz("Test verisi bulunamadı.");
+
+        let dogru = 0;
+        const k = parseInt(document.getElementById('parametreGirdisi').value);
+
+        testVerisi.forEach(p => {
+            let tahminId = null;
+            if (algo === 'knn') {
+                tahminId = knnTahmin(p.x, p.y, k, egitimVerisi);
+            } else if (algo === 'agac') {
+                const harf = agacTahmin(agacModeli, p.x, p.y);
+                const s = siniflar.find(c => c.harf === harf);
+                if(s) tahminId = s.id;
+            }
+            if (tahminId === p.sinifId) dogru++;
+        });
+
+        const oran = ((dogru / testVerisi.length) * 100).toFixed(1);
+        logYaz(`TEST SONUCU: <span class="vurgu">%${oran} Doğruluk</span> (${dogru}/${testVerisi.length} doğru)`);
+    }
+
+    function analiziCalistir() {
+        const algoritma = document.getElementById('algoritmaSecimi').value;
+        if(algoritma === 'knn') {
+            herSeyiciz('knn');
+            dogrulukHesapla('knn');
+        }
+        else if(algoritma === 'agac') agacEgit();
+        else if(algoritma === 'kmeans') kmeansBaslat();
+    }
+
+    function logYaz(mesaj) {
+        const panel = document.getElementById('logPaneli');
+        const satir = document.createElement('div');
+        satir.className = 'log-satir';
+        satir.innerHTML = `> ${mesaj}`;
+        panel.prepend(satir);
+    }
+
+    function diziModu(arr) {
+        const s = {}; let max=0, m=arr[0];
+        arr.forEach(x => { s[x]=(s[x]||0)+1; if(s[x]>max){max=s[x]; m=x;} });
+        return m;
+    }
+
+    tuval.addEventListener('mousedown', e => {
+        if (!aktifSinifId) return alert("Lütfen bir sınıf seçin.");
+        const rect = tuval.getBoundingClientRect();
+        const sinif = siniflar.find(c => c.id === aktifSinifId);
+        
+        if(sinif) {
+            noktalar.push({ x: e.clientX - rect.left, y: e.clientY - rect.top, sinifId: sinif.id, renk: sinif.renk, tip: 'egitim' });
+            
+            const algo = document.getElementById('algoritmaSecimi').value;
+            if(algo === 'kmeans') noktalariCiz();
+            else herSeyiciz(algo === 'knn' ? 'knn' : null);
+        }
+    });
+
+</script>
+</body>
+</html>
